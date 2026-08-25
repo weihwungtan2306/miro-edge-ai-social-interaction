@@ -1,0 +1,37 @@
+<launch>
+  <!-- MiRo Edge AI - Full Social Interaction Pipeline -->
+  <!-- Usage: roslaunch miro_face_detect miro_pipeline.launch -->
+
+  <!-- Arguments -->
+  <arg name="miro_name" default="rob01"/>
+  <arg name="face_model" default="/catkin_ws/models/ssd_mobilenet_v2_face_quant_postprocess.tflite"/>
+  <arg name="use_coral" default="false"/>
+
+  <!-- Face Detection Node -->
+  <node name="face_detect_node"
+        pkg="miro_face_detect"
+        type="face_detect_node.py"
+        output="screen">
+    <param name="model_path" value="$(arg face_model)"/>
+    <param name="use_coral" value="$(arg use_coral)"/>
+    <param name="miro_name" value="$(arg miro_name)"/>
+  </node>
+
+  <!-- Emotion Recognition Node -->
+  <node name="emotion_node"
+        pkg="miro_emotion"
+        type="emotion_node.py"
+        output="screen">
+    <param name="miro_name" value="$(arg miro_name)"/>
+  </node>
+
+  <!-- Full Social Pipeline Node -->
+  <node name="miro_social_pipeline"
+        pkg="miro_face_detect"
+        type="miro_social_pipeline.py"
+        output="screen">
+    <param name="miro_name" value="$(arg miro_name)"/>
+    <param name="face_model" value="$(arg face_model)"/>
+  </node>
+
+</launch>
