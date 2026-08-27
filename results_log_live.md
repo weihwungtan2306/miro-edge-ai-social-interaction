@@ -92,3 +92,46 @@ tracking performance.
 
 Limitation: tested with a single face only (solo testing); multi-face behaviour is
 untested and left as a limitation for future work.
+
+## Multi-Model Pipeline - Repeat-Trial Verification and Refined Analysis
+
+Following review, two claims from the initial multi-model comparison were checked further rather
+than accepted at face value.
+
+**Mixed vs Optimal hybrid face-detection latency (15.4ms vs 9.2ms for nominally the same Coral
+model):** attributed to Edge TPU device-level cache eviction rather than generic "contention."
+The Edge TPU runtime keeps only one model's parameters cached on-chip at a time; in the Mixed
+configuration, the same physical Edge TPU alternates between the face-detection model and the
+emotion model's Edge-TPU-mapped operations every frame, forcing a parameter-cache reload on each
+switch. In the Optimal hybrid configuration, the Edge TPU is dedicated to the face-detection model
+only, avoiding this reload entirely - directly explaining the latency difference and why Optimal
+hybrid outperforms Mixed on face-detection speed and mean total latency despite using a "slower"
+(CPU-only) emotion model.
+
+**CPU-only vs Optimal-hybrid emotion-classification latency (7.5ms vs 14.8ms, identical model
+file, both cases running on CPU only):** initially flagged as possible single-run noise. Verified
+with 3 repeat trials of each configuration:
+
+| Run | CPU-only mean emotion latency | Optimal hybrid mean emotion latency |
+|-----|-------------------------------|--------------------------------------|
+| 1   | 7.6 ms                        | 14.6 ms                               |
+| 2   | 7.6 ms                        | 14.8 ms                               |
+| 3   | 7.6 ms                        | 14.8 ms                               |
+
+The gap is stable and reproducible (within-configuration variation under 0.2ms, versus a ~7ms
+gap between configurations), confirming this is a systematic effect rather than measurement noise.
+The most likely explanation is that having `pycoral`/`libedgetpu` loaded with an active Edge TPU
+device open in the same process (as in Optimal hybrid, which also runs Coral-based face detection)
+introduces background driver/USB-management overhead that measurably affects unrelated CPU-bound
+inference in that same process - not genuine concurrent execution, since the pipeline is single-
+threaded and sequential per frame (face detection completes fully before emotion classification
+begins). The precise root mechanism was not further isolated via profiling, given project time
+constraints; the finding is reported at the level of confidence the evidence supports: real and
+reproducible, with a plausible but unconfirmed specific cause.
+
+**Practical implication:** running any model through the Coral/Edge TPU pathway in a process
+carries a small fixed overhead cost for CPU-only work sharing that process, in addition to the
+per-model-switch cache eviction cost identified above. Both are genuine, previously undocumented
+(in this project) costs of edge-accelerator use that a naive "put everything on the accelerator"
+approach would miss - reinforcing the selective-acceleration recommendation from the original
+analysis.
