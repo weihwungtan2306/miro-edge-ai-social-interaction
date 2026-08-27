@@ -135,3 +135,25 @@ per-model-switch cache eviction cost identified above. Both are genuine, previou
 (in this project) costs of edge-accelerator use that a naive "put everything on the accelerator"
 approach would miss - reinforcing the selective-acceleration recommendation from the original
 analysis.
+
+## CPU-Only Live-Pipeline FPS Dip - Root Cause Confirmed (Not a Shared-Machine Confound)
+
+The earlier live face-detection benchmark (CPU-only) showed two sustained stalls to ~9-10 FPS
+during an otherwise ~15 FPS run, originally flagged as an open caveat pending verification against
+system load. This was investigated directly rather than left unresolved:
+
+- Host-level CPU activity (`top`, run on the lab machine outside the container) showed no other
+  process consuming significant CPU during the run.
+- The container's Docker CPU quota configuration (`docker inspect`, CpuQuota/CpuPeriod/NanoCpus)
+  was confirmed to be entirely unset (all zero) - no hard CPU limit was ever configured on this
+  container, ruling out cgroup-based throttling as a cause.
+- Live container resource usage (`docker stats`) showed CPU usage reaching ~95% of a single core
+  specifically during an active FPS dip.
+
+**Conclusion:** the FPS dips are not caused by contention from another process on the shared lab
+machine, nor by a Docker-imposed CPU limit. They reflect a genuine, intrinsic property of the
+CPU-only pipeline: a single-threaded inference workload periodically approaching the throughput
+ceiling of a single CPU core, at which point frames back up and throughput visibly stalls until
+it recovers. This reinforces rather than undermines the acceleration thesis - the instability is
+a real characteristic of CPU-only inference under this workload, not an artifact of the specific
+test environment.
